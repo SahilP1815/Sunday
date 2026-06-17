@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sunday AI Agent</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@300;400;500;700&family=Exo+2:wght@200;300;400&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #000;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Exo 2', sans-serif;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .stars {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+  }
+
+  .star {
+    position: absolute;
+    border-radius: 50%;
+    background: white;
+    animation: twinkle var(--d, 3s) ease-in-out infinite alternate;
+    opacity: var(--o, 0.5);
+  }
+
+  @keyframes twinkle {
+    from { opacity: var(--o, 0.3); transform: scale(1); }
+    to { opacity: calc(var(--o, 0.3) * 0.3); transform: scale(0.7); }
+  }
+
+  .scene {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 900px;
+    padding: 40px 20px;
+    min-height: 100vh;
+  }
+
+  .agent-name {
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 8px;
+    color: rgba(120, 220, 255, 0.5);
+    text-transform: uppercase;
+    margin-bottom: 60px;
+    opacity: 0;
+    animation: fadeUp 1s ease 0.5s forwards;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .orb-container {
+    position: relative;
+    width: 220px;
+    height: 220px;
+    cursor: pointer;
+    opacity: 0;
+    animation: fadeUp 1s ease 0.8s forwards;
+  }
+
+  .orb-outer-ring {
+    position: absolute;
+    inset: -30px;
+    border-radius: 50%;
+    border: 0.5px solid rgba(120, 200, 255, 0.12);
+    animation: rotateRing 20s linear infinite;
+  }
+
+  .orb-outer-ring::before {
+    content: '';
+    position: absolute;
+    top: 30px; left: -2px;
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: rgba(120, 200, 255, 0.6);
+    box-shadow: 0 0 6px rgba(120, 200, 255, 0.8);
+  }
+
+  @keyframes rotateRing {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .orb-mid-ring {
+    position: absolute;
+    inset: -15px;
+    border-radius: 50%;
+    border: 0.5px solid rgba(180, 120, 255, 0.1);
+    animation: rotateRing 14s linear infinite reverse;
+  }
+
+  .orb-mid-ring::before {
+    content: '';
+    position: absolute;
+    bottom: 15px; right: -2px;
+    width: 3px; height: 3px;
+    border-radius: 50%;
+    background: rgba(200, 120, 255, 0.7);
+    box-shadow: 0 0 5px rgba(200, 120, 255, 0.9);
+  }
+
+  .orb {
+    width: 220px;
+    height: 220px;
+    border-radius: 50%;
+    position: relative;
+    background: radial-gradient(circle at 35% 35%, #1a8fff 0%, #0d5aad 20%, #091e44 50%, #000 80%);
+    box-shadow:
+      0 0 40px rgba(30, 120, 255, 0.3),
+      0 0 80px rgba(30, 120, 255, 0.15),
+      inset 0 0 30px rgba(0,0,0,0.6);
+    transition: all 0.4s ease;
+    overflow: hidden;
+  }
+
+  .orb.listening {
+    animation: orbPulse 0.8s ease-in-out infinite alternate;
+    background: radial-gradient(circle at 35% 35%, #ff6b8a 0%, #c0306a 20%, #4a0a1e 50%, #000 80%);
+    box-shadow:
+      0 0 60px rgba(255, 80, 120, 0.5),
+      0 0 120px rgba(255, 80, 120, 0.2),
+      inset 0 0 30px rgba(0,0,0,0.6);
+  }
+
+  .orb.thinking {
+    background: radial-gradient(circle at 35% 35%, #40ffb0 0%, #0daa6e 20%, #022e1f 50%, #000 80%);
+    box-shadow:
+      0 0 50px rgba(40, 220, 130, 0.4),
+      0 0 100px rgba(40, 220, 130, 0.15),
+      inset 0 0 30px rgba(0,0,0,0.6);
+  }
+
+  .orb.speaking {
+    animation: orbSpeak 0.4s ease-in-out infinite alternate;
+    background: radial-gradient(circle at 35% 35%, #a0f0ff 0%, #2bc8f0 20%, #042a44 50%, #000 80%);
+    box-shadow:
+      0 0 50px rgba(40, 180, 255, 0.5),
+      0 0 100px rgba(40, 180, 255, 0.2),
+      inset 0 0 30px rgba(0,0,0,0.6);
+  }
+
+  @keyframes orbPulse {
+    from { transform: scale(1); }
+    to { transform: scale(1.05); }
+  }
+
+  @keyframes orbSpeak {
+    from { transform: scale(1); }
+    to { transform: scale(1.03); }
+  }
+
+  .orb-inner-glow {
+    position: absolute;
+    top: 18%; left: 15%;
+    width: 50%; height: 40%;
+    background: radial-gradient(ellipse, rgba(255,255,255,0.18) 0%, transparent 70%);
+    border-radius: 50%;
+    transform: rotate(-20deg);
+  }
+
+  .orb-wave {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 120%, rgba(100,200,255,0.15) 0%, transparent 60%);
+  }
+
+  .fluid-1 {
+    position: absolute;
+    width: 160%;
+    height: 160%;
+    top: -30%;
+    left: -30%;
+    border-radius: 40%;
+    background: radial-gradient(circle, rgba(255,80,150,0.12) 0%, transparent 60%);
+    animation: fluidMove 8s ease-in-out infinite;
+    transform-origin: center;
+  }
+
+  .fluid-2 {
+    position: absolute;
+    width: 140%;
+    height: 140%;
+    top: -20%;
+    left: -20%;
+    border-radius: 45%;
+    background: radial-gradient(circle, rgba(80,120,255,0.12) 0%, transparent 60%);
+    animation: fluidMove 12s ease-in-out infinite reverse;
+    transform-origin: center;
+  }
+
+  .fluid-3 {
+    position: absolute;
+    width: 130%;
+    height: 130%;
+    top: -15%;
+    left: -15%;
+    border-radius: 38%;
+    background: radial-gradient(circle at 70% 30%, rgba(40,220,180,0.1) 0%, transparent 60%);
+    animation: fluidMove 10s ease-in-out infinite 3s;
+    transform-origin: center;
+  }
+
+  @keyframes fluidMove {
+    0%, 100% { transform: rotate(0deg) scale(1); }
+    33% { transform: rotate(120deg) scale(1.05); }
+    66% { transform: rotate(240deg) scale(0.97); }
+  }
+
+  .status-text {
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    font-weight: 300;
+    letter-spacing: 4px;
+    color: rgba(120, 200, 255, 0.6);
+    text-transform: uppercase;
+    margin-top: 40px;
+    min-height: 18px;
+    text-align: center;
+    opacity: 0;
+    animation: fadeUp 1s ease 1.2s forwards;
+    transition: color 0.4s;
+  }
+
+  .status-text.active { color: rgba(255, 120, 160, 0.8); }
+  .status-text.thinking { color: rgba(40, 220, 130, 0.8); }
+  .status-text.speaking { color: rgba(80, 200, 255, 0.9); }
+
+  .response-area {
+    width: 100%;
+    max-width: 640px;
+    margin-top: 40px;
+    min-height: 80px;
+    opacity: 0;
+    animation: fadeUp 1s ease 1.5s forwards;
+  }
+
+  .response-bubble {
+    background: rgba(15, 25, 50, 0.85);
+    border: 0.5px solid rgba(80, 160, 255, 0.2);
+    border-radius: 16px;
+    padding: 20px 24px;
+    color: rgba(200, 230, 255, 0.9);
+    font-size: 14px;
+    font-weight: 300;
+    line-height: 1.7;
+    letter-spacing: 0.3px;
+    backdrop-filter: blur(10px);
+    min-height: 70px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .response-bubble.has-content {
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  .response-bubble.placeholder {
+    color: rgba(80, 140, 200, 0.35);
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+
+  .input-area {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+    width: 100%;
+    max-width: 640px;
+    opacity: 0;
+    animation: fadeUp 1s ease 1.7s forwards;
+  }
+
+  .text-input {
+    flex: 1;
+    background: rgba(10, 20, 40, 0.8);
+    border: 0.5px solid rgba(80, 160, 255, 0.25);
+    border-radius: 12px;
+    padding: 14px 18px;
+    color: rgba(200, 230, 255, 0.9);
+    font-family: 'Exo 2', sans-serif;
+    font-size: 14px;
+    font-weight: 300;
+    outline: none;
+    transition: border-color 0.3s, box-shadow 0.3s;
+    backdrop-filter: blur(10px);
+  }
+
+  .text-input::placeholder {
+    color: rgba(80, 140, 200, 0.35);
+    font-size: 13px;
+  }
+
+  .text-input:focus {
+    border-color: rgba(80, 160, 255, 0.5);
+    box-shadow: 0 0 15px rgba(80, 160, 255, 0.1);
+  }
+
+  .send-btn {
+    background: rgba(30, 80, 180, 0.4);
+    border: 0.5px solid rgba(80, 160, 255, 0.4);
+    border-radius: 12px;
+    padding: 14px 20px;
+    color: rgba(150, 210, 255, 0.9);
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    cursor: pointer;
+    transition: all 0.3s;
+    white-space: nowrap;
+  }
+
+  .send-btn:hover {
+    background: rgba(40, 100, 220, 0.5);
+    border-color: rgba(100, 180, 255, 0.6);
+    box-shadow: 0 0 20px rgba(80, 160, 255, 0.2);
+  }
+
+  .mic-btn {
+    background: rgba(15, 15, 30, 0.6);
+    border: 0.5px solid rgba(80, 160, 255, 0.3);
+    border-radius: 12px;
+    padding: 14px 16px;
+    color: rgba(150, 210, 255, 0.7);
+    cursor: pointer;
+    font-size: 18px;
+    transition: all 0.3s;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+  }
+
+  .mic-btn:hover {
+    background: rgba(40, 80, 200, 0.3);
+    border-color: rgba(100, 180, 255, 0.5);
+  }
+
+  .mic-btn.active {
+    background: rgba(180, 30, 80, 0.4);
+    border-color: rgba(255, 80, 130, 0.5);
+    color: rgba(255, 150, 180, 0.9);
+    box-shadow: 0 0 20px rgba(255, 80, 130, 0.2);
+  }
+
+  .hotkey-hint {
+    font-family: 'Orbitron', monospace;
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: rgba(80, 130, 180, 0.35);
+    text-align: center;
+    margin-top: 24px;
+    text-transform: uppercase;
+    opacity: 0;
+    animation: fadeUp 1s ease 2s forwards;
+  }
+
+  .thinking-dots {
+    display: inline-flex;
+    gap: 5px;
+    align-items: center;
+  }
+
+  .thinking-dots span {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: rgba(40, 220, 130, 0.7);
+    animation: dotBounce 1s ease-in-out infinite;
+  }
+
+  .thinking-dots span:nth-child(2) { animation-delay: 0.15s; }
+  .thinking-dots span:nth-child(3) { animation-delay: 0.3s; }
+
+  @keyframes dotBounce {
+    0%, 100% { transform: translateY(0); opacity: 0.4; }
+    50% { transform: translateY(-5px); opacity: 1; }
+  }
+
+  .audio-bars {
+    display: inline-flex;
+    gap: 4px;
+    align-items: flex-end;
+    height: 20px;
+  }
+
+  .audio-bar {
+    width: 3px;
+    background: rgba(80, 200, 255, 0.7);
+    border-radius: 2px;
+    animation: barBounce 0.5s ease-in-out infinite alternate;
+  }
+
+  .audio-bar:nth-child(1) { animation-delay: 0s; height: 8px; }
+  .audio-bar:nth-child(2) { animation-delay: 0.1s; height: 14px; }
+  .audio-bar:nth-child(3) { animation-delay: 0.2s; height: 18px; }
+  .audio-bar:nth-child(4) { animation-delay: 0.15s; height: 12px; }
+  .audio-bar:nth-child(5) { animation-delay: 0.05s; height: 7px; }
+
+  @keyframes barBounce {
+    from { height: 4px; }
+    to { height: var(--h, 14px); }
+  }
+
+  .api-key-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: rgba(0,0,0,0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(8px);
+  }
+
+  .api-key-modal.hidden { display: none; }
+
+  .modal-card {
+    background: rgba(8, 15, 35, 0.98);
+    border: 0.5px solid rgba(80, 160, 255, 0.3);
+    border-radius: 20px;
+    padding: 40px;
+    width: 90%;
+    max-width: 460px;
+    text-align: center;
+  }
+
+  .modal-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 13px;
+    letter-spacing: 5px;
+    color: rgba(120, 200, 255, 0.8);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+  }
+
+  .modal-sub {
+    font-size: 13px;
+    font-weight: 300;
+    color: rgba(140, 180, 220, 0.55);
+    margin-bottom: 28px;
+    line-height: 1.6;
+  }
+
+  .modal-input {
+    width: 100%;
+    background: rgba(10, 20, 45, 0.9);
+    border: 0.5px solid rgba(80, 160, 255, 0.3);
+    border-radius: 10px;
+    padding: 14px 16px;
+    color: rgba(200, 230, 255, 0.9);
+    font-family: 'Exo 2', sans-serif;
+    font-size: 14px;
+    outline: none;
+    margin-bottom: 16px;
+    letter-spacing: 1px;
+  }
+
+  .modal-input:focus {
+    border-color: rgba(80, 160, 255, 0.5);
+  }
+
+  .modal-btn {
+    background: rgba(30, 80, 180, 0.5);
+    border: 0.5px solid rgba(80, 160, 255, 0.4);
+    border-radius: 10px;
+    padding: 13px 32px;
+    color: rgba(150, 210, 255, 0.9);
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    letter-spacing: 3px;
+    cursor: pointer;
+    transition: all 0.3s;
+    text-transform: uppercase;
+  }
+
+  .modal-btn:hover {
+    background: rgba(40, 100, 220, 0.6);
+    box-shadow: 0 0 25px rgba(80, 160, 255, 0.2);
+  }
+
+  .capability-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 28px;
+    max-width: 600px;
+    opacity: 0;
+    animation: fadeUp 1s ease 2.2s forwards;
+  }
+
+  .cap-tag {
+    background: rgba(15, 30, 60, 0.8);
+    border: 0.5px solid rgba(60, 120, 200, 0.2);
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-family: 'Orbitron', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: rgba(100, 170, 240, 0.5);
+    text-transform: uppercase;
+  }
+
+  .version-tag {
+    position: fixed;
+    bottom: 20px;
+    right: 24px;
+    font-family: 'Orbitron', monospace;
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: rgba(60, 100, 160, 0.3);
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+
+<div class="stars" id="stars"></div>
+
+<div class="api-key-modal" id="apiModal">
+  <div class="modal-card">
+    <div class="modal-title">Initialise Sunday</div>
+    <p class="modal-sub">Connect to your Sunday backend server. Start the backend with <code style="color:rgba(120,200,255,0.7);font-size:11px">npm run dev</code> in the <code style="color:rgba(120,200,255,0.7);font-size:11px">sunday-backend</code> folder.</p>
+    <input class="modal-input" type="text" id="backendUrlInput" placeholder="http://localhost:3001" value="http://localhost:3001" />
+    <br>
+    <button class="modal-btn" onclick="activateSunday()">Connect &amp; Activate</button>
+    <p id="modalError" style="color:rgba(255,100,100,0.8);font-size:12px;margin-top:14px;min-height:18px;"></p>
+  </div>
+</div>
+
+<div class="scene">
+  <div class="agent-name">Sunday · AI Assistant</div>
+
+  <div class="orb-container" onclick="toggleListen()" id="orbContainer">
+    <div class="orb-outer-ring"></div>
+    <div class="orb-mid-ring"></div>
+    <div class="orb" id="mainOrb">
+      <div class="fluid-1"></div>
+      <div class="fluid-2"></div>
+      <div class="fluid-3"></div>
+      <div class="orb-inner-glow"></div>
+      <div class="orb-wave"></div>
+    </div>
+  </div>
+
+  <div class="status-text" id="statusText">Tap orb or say "Hey Sunday"</div>
+
+  <div class="response-area">
+    <div class="response-bubble placeholder" id="responseBubble">Awaiting your command</div>
+  </div>
+
+  <div class="input-area">
+    <input class="text-input" type="text" id="textInput" placeholder="Ask Sunday anything..." onkeypress="handleKeyPress(event)" />
+    <button class="mic-btn" id="micBtn" onclick="toggleListen()" title="Hold to speak">🎤</button>
+    <button class="send-btn" onclick="sendMessage()">Send</button>
+  </div>
+
+  <div class="capability-tags">
+    <div class="cap-tag">Stock Market</div>
+    <div class="cap-tag">World News</div>
+    <div class="cap-tag">Web Search</div>
+    <div class="cap-tag">Open Pages</div>
+    <div class="cap-tag">Weather</div>
+    <div class="cap-tag">Calculations</div>
+    <div class="cap-tag">Analysis</div>
+    <div class="cap-tag">Code</div>
+  </div>
+
+  <div class="hotkey-hint">Say "Hey Sunday" to activate · Click orb to speak · Type below</div>
+</div>
+
+<div class="version-tag">Sunday v1.0 · Powered by Claude</div>
+
+<script>
+// ── Backend config ─────────────────────────────────────────
+let BACKEND_URL = 'http://localhost:3001';
+let backendReady = false;
+
+let isListening = false;
+let recognition = null;
+let isSpeaking = false;
+let conversationHistory = [];
+
+function generateStars() {
+  const container = document.getElementById('stars');
+  for (let i = 0; i < 120; i++) {
+    const star = document.createElement('div');
+    star.className = 'star';
+    const size = Math.random() * 2 + 0.5;
+    star.style.cssText = `
+      left: ${Math.random() * 100}%;
+      top: ${Math.random() * 100}%;
+      width: ${size}px;
+      height: ${size}px;
+      --o: ${Math.random() * 0.5 + 0.1};
+      --d: ${Math.random() * 4 + 2}s;
+      animation-delay: ${Math.random() * 4}s;
+    `;
+    container.appendChild(star);
+  }
+}
+
+async function activateSunday() {
+  const url = (document.getElementById('backendUrlInput').value || 'http://localhost:3001').replace(/\/$/, '');
+  const errEl = document.getElementById('modalError');
+  errEl.textContent = 'Connecting...';
+
+  try {
+    const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) throw new Error(`Backend returned ${res.status}`);
+    BACKEND_URL  = url;
+    backendReady = true;
+    localStorage.setItem('sunday_backend_url', url);
+    document.getElementById('apiModal').classList.add('hidden');
+    setStatus('Online · Ready', '');
+    speak('Sunday online. All systems operational. How may I assist?');
+  } catch (err) {
+    errEl.textContent = `⚠ Cannot reach backend: ${err.message}`;
+    document.getElementById('backendUrlInput').style.borderColor = 'rgba(255,80,80,0.5)';
+  }
+}
+
+function setOrbState(state) {
+  const orb = document.getElementById('mainOrb');
+  orb.className = 'orb' + (state ? ' ' + state : '');
+}
+
+function setStatus(text, state) {
+  const el = document.getElementById('statusText');
+  el.textContent = text;
+  el.className = 'status-text' + (state ? ' ' + state : '');
+}
+
+function setResponse(html, isPlaceholder) {
+  const bubble = document.getElementById('responseBubble');
+  bubble.innerHTML = html;
+  bubble.className = 'response-bubble' + (isPlaceholder ? ' placeholder' : ' has-content');
+}
+
+async function callClaude(message) {
+  stopWakeWordDetection();
+  setOrbState('thinking');
+  setStatus('Processing...', 'thinking');
+  setResponse('<div class="thinking-dots"><span></span><span></span><span></span></div>', false);
+
+  conversationHistory.push({ role: 'user', content: message });
+
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message,
+        history: conversationHistory.slice(0, -1)   // exclude the msg we just added
+      }),
+      signal: AbortSignal.timeout(30000)
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.error) {
+      setOrbState('');
+      setStatus('Error · Retry', '');
+      setResponse('⚠ ' + (data.error || 'Sunday encountered an error. Try again.'), true);
+      conversationHistory.pop();
+      startWakeWordDetection();
+      return;
+    }
+
+    const reply = data.reply || '';
+    conversationHistory.push({ role: 'assistant', content: reply });
+
+    const processedText = processNavigation(reply);
+    setResponse(processedText, false);
+    speak(reply);
+
+  } catch (err) {
+    setOrbState('');
+    setStatus('Connection lost', '');
+    setResponse('⚠ Cannot reach Sunday backend. Is the server running at ' + BACKEND_URL + '?', true);
+    conversationHistory.pop();
+    startWakeWordDetection();
+  }
+}
+
+function processNavigation(text) {
+  const match = text.match(/\[URL:(https?:\/\/[^\]]+)\]/);
+  if (match && match[1]) {
+    const url = match[1];
+    setTimeout(() => {
+      window.location.href = url;
+    }, 1500);
+  }
+
+  let html = text.replace(/\[URL:(https?:\/\/[^\]]+)\]/g, (match, url) => {
+    const domain = new URL(url).hostname.replace('www.', '');
+    return `<br><a href="${url}" style="color: rgba(80,180,255,0.8); font-family: Orbitron, monospace; font-size: 11px; letter-spacing: 2px; text-decoration: none; border-bottom: 0.5px solid rgba(80,180,255,0.3);">→ OPEN ${domain.toUpperCase()}</a>`;
+  });
+  html = html.replace(/\n/g, '<br>');
+  return html;
+}
+
+function speak(text) {
+  if (!window.speechSynthesis) {
+    startWakeWordDetection();
+    return;
+  }
+  speechSynthesis.cancel();
+  const clean = text.replace(/\[URL:[^\]]+\]/g, '').replace(/<[^>]+>/g, '');
+  const utterance = new SpeechSynthesisUtterance(clean);
+  utterance.rate = 0.92;
+  utterance.pitch = 0.85;
+  utterance.volume = 0.9;
+
+  const voices = speechSynthesis.getVoices();
+  const preferred = voices.find(v => v.name.includes('Daniel') || v.name.includes('British') || v.name.includes('English') || v.lang === 'en-GB');
+  if (preferred) utterance.voice = preferred;
+
+  utterance.onstart = () => {
+    setOrbState('speaking');
+    setStatus('Speaking...', 'speaking');
+    isSpeaking = true;
+    stopWakeWordDetection();
+  };
+
+  utterance.onend = () => {
+    setOrbState('');
+    setStatus('Online · Ready', '');
+    isSpeaking = false;
+    startWakeWordDetection();
+  };
+
+  speechSynthesis.speak(utterance);
+}
+
+function toggleListen() {
+  if (!backendReady) {
+    document.getElementById('apiModal').classList.remove('hidden');
+    return;
+  }
+
+  if (isListening) {
+    stopListening();
+    return;
+  }
+
+  stopWakeWordDetection();
+
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    setStatus('Voice not supported · Use text', '');
+    document.getElementById('textInput').focus();
+    return;
+  }
+
+  setTimeout(() => {
+    startListening();
+  }, 100);
+}
+
+function startListening() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SR();
+  recognition.continuous = false;
+  recognition.interimResults = true;
+  recognition.lang = 'en-US';
+
+  recognition.onstart = () => {
+    isListening = true;
+    setOrbState('listening');
+    setStatus('Listening...', 'active');
+    document.getElementById('micBtn').classList.add('active');
+    setResponse('<div class="audio-bars"><div class="audio-bar" style="--h:8px"></div><div class="audio-bar" style="--h:14px"></div><div class="audio-bar" style="--h:18px"></div><div class="audio-bar" style="--h:12px"></div><div class="audio-bar" style="--h:7px"></div></div>', false);
+  };
+
+  recognition.onresult = (e) => {
+    const transcript = Array.from(e.results).map(r => r[0].transcript).join('');
+    setResponse('"' + transcript + '"', false);
+    if (e.results[0].isFinal) processVoiceInput(transcript);
+  };
+
+  recognition.onerror = (e) => {
+    console.error('Speech recognition error:', e.error);
+    isListening = false;
+    setOrbState('');
+    document.getElementById('micBtn').classList.remove('active');
+    
+    if (e.error === 'not-allowed') {
+      setStatus('Microphone blocked', 'active');
+      setResponse('⚠ Microphone permission denied. Please allow microphone access in your browser settings.', true);
+    } else if (e.error === 'no-speech') {
+      setStatus('No speech detected', '');
+      setResponse('Awaiting your command', true);
+      startWakeWordDetection();
+    } else {
+      setStatus(`Speech Error: ${e.error}`, '');
+      setResponse(`⚠ Voice input error: ${e.error}`, true);
+      startWakeWordDetection();
+    }
+  };
+
+  recognition.onend = () => {
+    if (!isListening) return;
+    isListening = false;
+    setOrbState('');
+    setStatus('Online · Ready', '');
+    document.getElementById('micBtn').classList.remove('active');
+    startWakeWordDetection();
+  };
+
+  recognition.start();
+}
+
+function stopListening() {
+  if (recognition) recognition.stop();
+  isListening = false;
+  document.getElementById('micBtn').classList.remove('active');
+  startWakeWordDetection();
+}
+
+function processVoiceInput(text) {
+  const lower = text.toLowerCase();
+  if (lower.includes('hey sunday')) {
+    setResponse('Online. How may I assist?', false);
+    speak('Online. How may I assist?');
+    return;
+  }
+  callClaude(text);
+}
+
+function sendMessage() {
+  if (!backendReady) {
+    document.getElementById('apiModal').classList.remove('hidden');
+    return;
+  }
+  const input = document.getElementById('textInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  callClaude(msg);
+}
+
+function handleKeyPress(e) {
+  if (e.key === 'Enter') sendMessage();
+}
+
+window.addEventListener('keydown', (e) => {
+  const lower = document.activeElement.tagName;
+  if (lower === 'INPUT') return;
+  if (e.code === 'Space') {
+    e.preventDefault();
+    toggleListen();
+  }
+});
+
+speechSynthesis.onvoiceschanged = () => {};
+
+let wakeWordRecognizer = null;
+let wakeWordActive = false;
+
+function startWakeWordDetection() {
+  if (!backendReady || wakeWordActive) return;
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    console.warn('Speech recognition not supported for wake word.');
+    return;
+  }
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  wakeWordRecognizer = new SR();
+  wakeWordRecognizer.continuous = true;
+  wakeWordRecognizer.interimResults = true;
+  wakeWordRecognizer.lang = 'en-US';
+
+  wakeWordRecognizer.onresult = (e) => {
+    if (isListening || isSpeaking) return;
+
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const transcript = e.results[i][0].transcript.toLowerCase();
+      if (transcript.includes('hey sunday') || transcript.includes('sunday')) {
+        console.log('Wake word detected via:', transcript);
+        stopWakeWordDetection();
+        
+        // Start active listening after a short delay to let wakeWordRecognizer stop
+        setTimeout(() => {
+          startListening();
+        }, 150);
+        break;
+      }
+    }
+  };
+
+  wakeWordRecognizer.onerror = (e) => {
+    console.error('Wake word recognition error:', e.error);
+    if (e.error !== 'not-allowed') {
+      setTimeout(() => {
+        if (wakeWordActive) startWakeWordDetection();
+      }, 1000);
+    }
+  };
+
+  wakeWordRecognizer.onend = () => {
+    if (wakeWordActive) {
+      setTimeout(() => {
+        if (wakeWordActive) startWakeWordDetection();
+      }, 300);
+    }
+  };
+
+  wakeWordActive = true;
+  try {
+    wakeWordRecognizer.start();
+  } catch (err) {
+    console.error('Failed to start wake word recognizer:', err);
+    wakeWordActive = false;
+  }
+}
+
+function stopWakeWordDetection() {
+  wakeWordActive = false;
+  if (wakeWordRecognizer) {
+    try {
+      wakeWordRecognizer.stop();
+    } catch (err) {}
+  }
+}
+
+window.onload = () => {
+  generateStars();
+  const savedUrl = localStorage.getItem('sunday_backend_url');
+  if (savedUrl) {
+    document.getElementById('backendUrlInput').value = savedUrl;
+    activateSunday();
+  }
+};
+</script>
+</body>
+</html>

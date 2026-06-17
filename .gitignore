@@ -1,0 +1,20 @@
+# Dependency directories
+sunday-backend/node_modules/
+
+# Local configuration / environment files
+sunday-backend/.env
+sunday-desktop/config.json
+
+# Python cache and temporary files
+sunday-desktop/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+venv/
+.venv/
+env/
+
+# OS/System files
+.DS_Store
+Thumbs.db
