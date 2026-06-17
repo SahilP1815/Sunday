@@ -116,7 +116,7 @@ To run the lightweight web-based interface:
 - **Desktop**: Python 3, CustomTkinter, PyAudio, pyttsx3, SpeechRecognition, google-generativeai, pywin32, psutil
 - **Backend**: Node.js, Express, Axios, @anthropic-ai/sdk, @google/generative-ai, yahoo-finance2
 - **Web**: Vanilla HTML5, CSS3 (Glassmorphism & animations), ES6 Javascript
-- **APIs**: Anthropic Claude, Google Gemini, Yahoo Finance, GNews, SerpAPI, Sarvam AI
+- **APIs**: Anthropic Claude or Google Gemini, Yahoo Finance, GNews, SerpAPI
 
 ## License
 MIT
