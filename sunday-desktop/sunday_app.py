@@ -118,6 +118,9 @@ class SundayApp:
         self._animate_orb()
         self._start_voice()
 
+        # Keyboard shortcuts
+        self.root.bind("<Control-space>", lambda e: self._on_mic_click())
+
         # Initial greeting
         self.root.after(800, self._greet)
 
@@ -198,9 +201,9 @@ class SundayApp:
             "🎤  Say 'Hey Sunday' to wake",
             "📂  'Open my Downloads folder'",
             "💻  'Launch VS Code'",
-            "🌐  'Open youtube.com'",
-            "🔊  'Volume up'",
-            "📸  'Take a screenshot'",
+            "📊  'Show CPU usage' / 'system status'",
+            "🛑  'Close Chrome' / 'Kill Notepad'",
+            "⌨   Ctrl + Space to listen",
         ]
         for h in hints:
             chip = ctk.CTkLabel(

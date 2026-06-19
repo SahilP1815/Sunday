@@ -1,11 +1,7 @@
-"""
-Sunday AI Brain
-Handles conversation with Google Gemini, with system command awareness.
-"""
-
 import os
 import json
 import google.generativeai as genai
+import requests
 from pathlib import Path
 from system_controller import handle_command
 
@@ -33,22 +29,93 @@ SYSTEM_PROMPT = """You are Sunday, an intelligent and loyal personal AI assistan
 You are modelled after J.A.R.V.I.S. — calm, precise, slightly witty, and deeply helpful.
 
 Your capabilities:
-- Open any file, folder, or application on the user's Windows PC
-- Control system settings (volume, shutdown, lock, screenshot)
+- Open or close files, folders, or applications on the user's Windows PC (e.g. "close Chrome", "kill notepad")
+- Control system settings (volume, brightness, media playback like play/pause/next, shutdown, lock, screenshot)
+- Control application windows (minimize, maximize, close active window)
+- Check real-time PC health diagnostics (CPU usage, RAM/memory, disk space, battery status)
 - Open websites and URLs in the browser
 - Answer questions, provide analysis, help with calculations
 - Discuss news, weather, stocks, general knowledge
 - Assist with writing, coding, and creative tasks
+- Use tools to search the web, fetch real-time news, and check stock market/crypto prices when asked about current information.
 
 Your personality:
 - Address the user respectfully but warmly (you can use "sir" occasionally but don't overdo it)
 - Be concise — give direct answers, avoid unnecessary padding
-- When performing a system action, confirm it briefly ("Done. I've opened Chrome.")
+- When performing a system action, confirm it briefly ("Done. I've closed Notepad.")
 - When unsure, say so honestly
 
 You are speaking to the user through a voice interface. Keep responses conversational and clear.
 Do NOT use markdown formatting like ** or # in your responses — speak naturally.
 Keep responses under 3 sentences unless the user asks for more detail."""
+
+
+# ── Tools ───────────────────────────────────────────────────────────────────
+
+def web_search(query: str) -> str:
+    """Search the web for current events, news, or general search queries.
+    
+    Args:
+        query: The search query string.
+    """
+    try:
+        response = requests.get("http://localhost:3001/api/search", params={"q": query}, timeout=8)
+        if response.status_code == 200:
+            data = response.json()
+            results = data.get("results", [])
+            if not results:
+                return "No search results found."
+            formatted = []
+            for r in results[:4]:
+                formatted.append(f"Title: {r.get('title')}\nSnippet: {r.get('snippet')}\nURL: {r.get('url')}\n")
+            return "\n".join(formatted)
+        return f"Error: Search API returned status code {response.status_code}"
+    except Exception as e:
+        return f"Error during web search: {str(e)}"
+
+def get_market_data(symbol: str) -> str:
+    """Get real-time stock market, index, cryptocurrency, or commodity prices.
+    
+    Args:
+        symbol: The stock ticker or asset symbol (e.g., AAPL, nifty, btc, gold).
+    """
+    try:
+        response = requests.get(f"http://localhost:3001/api/market/{symbol}", timeout=8)
+        if response.status_code == 200:
+            data = response.json()
+            return (
+                f"Asset: {data.get('name')} ({data.get('symbol')})\n"
+                f"Price: {data.get('price')} {data.get('currency')}\n"
+                f"Change: {data.get('change')} ({data.get('changePercent')}% {data.get('direction')})\n"
+                f"Day Range: {data.get('dayLow')} - {data.get('dayHigh')}\n"
+                f"Open: {data.get('open')} (Prev Close: {data.get('previousClose')})\n"
+                f"Market State: {data.get('marketState')}\n"
+                f"Timestamp: {data.get('timestamp')}"
+            )
+        return f"Error: Market API returned status code {response.status_code}"
+    except Exception as e:
+        return f"Error fetching market data: {str(e)}"
+
+def get_news(category: str = "general") -> str:
+    """Get the latest news headlines.
+    
+    Args:
+        category: The category of news to fetch (e.g., general, business, technology, sports, science, health, entertainment).
+    """
+    try:
+        response = requests.get("http://localhost:3001/api/news", params={"category": category}, timeout=8)
+        if response.status_code == 200:
+            data = response.json()
+            articles = data.get("articles", [])
+            if not articles:
+                return f"No news articles found for category '{category}'."
+            formatted = []
+            for a in articles[:4]:
+                formatted.append(f"Title: {a.get('title')}\nSource: {a.get('source')} ({a.get('publishedAt')})\nDescription: {a.get('description')}\nURL: {a.get('url')}\n")
+            return "\n".join(formatted)
+        return f"Error: News API returned status code {response.status_code}"
+    except Exception as e:
+        return f"Error fetching news: {str(e)}"
 
 
 class SundayBrain:
@@ -103,13 +170,15 @@ class SundayBrain:
             self.model = genai.GenerativeModel(
                 model_name=model_name,
                 system_instruction=SYSTEM_PROMPT,
+                tools=[web_search, get_market_data, get_news]
             )
-            self.chat = self.model.start_chat(history=[])
+            self.chat = self.model.start_chat(history=[], enable_automatic_function_calling=True)
             print(f"[Sunday Brain] Gemini initialised successfully with model: {model_name}")
         except Exception as e:
             print(f"[Sunday Brain] Failed to initialise Gemini: {e}")
             self.model = None
             self.chat  = None
+
 
     # ── Public API ────────────────────────────────────────────────
 
@@ -168,7 +237,7 @@ class SundayBrain:
         """Clear conversation history and start a fresh chat."""
         self.history = []
         if self.model:
-            self.chat = self.model.start_chat(history=[])
+            self.chat = self.model.start_chat(history=[], enable_automatic_function_calling=True)
 
     # ── Internal ──────────────────────────────────────────────────
 

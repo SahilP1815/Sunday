@@ -9,6 +9,7 @@ import webbrowser
 import glob
 import re
 import ctypes
+import psutil
 from pathlib import Path
 
 
@@ -196,6 +197,57 @@ def handle_command(text: str):
         _press_key(0xAE, count=5); return "Volume decreased."
     if re.search(r"\bmute\b|\bunmute\b", lower):
         _press_key(0xAD); return "Volume toggled."
+
+    # Brightness ───────────────────────────────────────────────────
+    m = re.search(r"\b(brightness)\s+(?:to\s+)?(up|down|increase|decrease|(\d+))", lower)
+    if m:
+        param = m.group(2)
+        return _change_brightness(param)
+
+    # Media playback control ───────────────────────────────────────
+    if re.search(r"\b(play|pause|resume|media play|media pause)\b", lower) and ("music" in lower or "song" in lower or "media" in lower or "playback" in lower):
+        _press_key(0xB3)
+        return "Media toggled."
+    if re.search(r"\b(next song|next track|skip song|skip track)\b", lower):
+        _press_key(0xB5)
+        return "Playing next track."
+    if re.search(r"\b(previous song|previous track|go back song)\b", lower):
+        _press_key(0xB6)
+        return "Playing previous track."
+    if re.search(r"\b(stop music|stop media|stop playback)\b", lower):
+        _press_key(0xB1)
+        return "Media playback stopped."
+
+    # Window Management ────────────────────────────────────────────
+    if "close active window" in lower or "close window" in lower:
+        _send_key_combination([0x12, 0x73]) # Alt + F4
+        return "Closing window."
+    if "minimize active window" in lower or "minimize window" in lower or lower == "minimize":
+        _send_key_combination([0x5B, 0x28]) # Win + Down
+        return "Minimizing window."
+    if "maximize active window" in lower or "maximize window" in lower or lower == "maximize":
+        _send_key_combination([0x5B, 0x26]) # Win + Up
+        return "Maximizing window."
+
+    # System Diagnostics ───────────────────────────────────────────
+    if re.search(r"\b(cpu usage|cpu status)\b", lower):
+        return get_system_diagnostics("cpu")
+    if re.search(r"\b(ram usage|memory usage|ram status)\b", lower):
+        return get_system_diagnostics("ram")
+    if re.search(r"\b(disk usage|disk space|storage status)\b", lower):
+        return get_system_diagnostics("disk")
+    if re.search(r"\b(battery level|battery status|battery percentage)\b", lower):
+        return get_system_diagnostics("battery")
+    if re.search(r"\b(system diagnostics|system resources?|system status|resource monitor|diagnostics)\b", lower):
+        return get_system_diagnostics("all")
+
+    # App Killing / Closing ────────────────────────────────────────
+    m = re.match(r"^(?:close|kill|stop|terminate|exit)\s+(?!window|active window)(.+)$", lower)
+    if m:
+        target = _clean(m.group(1))
+        # Ensure it's not a general power/shutdown command
+        if target not in ("shutdown", "restart", "reboot", "lock", "pc", "computer", "system", "media", "music"):
+            return _kill_process_by_name(target)
 
     # 5. Screenshot ────────────────────────────────────────────────
     if re.search(r"\bscreenshot\b|\bscreen\s*capture\b|\bsnip\b", lower):
@@ -423,3 +475,140 @@ def _press_key_combo():
         ctypes.windll.user32.keybd_event(k, 0, 0, 0)
     for k in [VK_S, VK_SHIFT, VK_LWIN]:
         ctypes.windll.user32.keybd_event(k, 0, 2, 0)
+
+
+def _send_key_combination(keys):
+    """Presses and releases a list of virtual key codes in order."""
+    # Press keys in order
+    for k in keys:
+        ctypes.windll.user32.keybd_event(k, 0, 0, 0)
+    # Release keys in reverse order
+    for k in reversed(keys):
+        ctypes.windll.user32.keybd_event(k, 0, 2, 0)
+
+
+def _change_brightness(param: str) -> str:
+    """Gets or sets screen brightness using Windows Management Instrumentation (WMI) via PowerShell."""
+    try:
+        # Get current brightness
+        get_cmd = "powershell -Command \"(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightness).CurrentBrightness\""
+        proc = subprocess.run(get_cmd, capture_output=True, text=True, shell=True)
+        current = 50 # default fallback
+        out = proc.stdout.strip()
+        if proc.returncode == 0 and out.isdigit():
+            current = int(out)
+        else:
+            return "Screen brightness adjustment is only supported on laptops or displays with built-in brightness controls."
+
+        target = current
+        if param in ("up", "increase"):
+            target = min(current + 10, 100)
+        elif param in ("down", "decrease"):
+            target = max(current - 10, 0)
+        else:
+            try:
+                target = max(0, min(int(param), 100))
+            except ValueError:
+                return "I couldn't parse the target brightness level. Please specify up, down, or a percentage."
+                
+        set_cmd = f"powershell -Command \"(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods).WmiSetBrightness(1, {target})\""
+        subprocess.Popen(set_cmd, shell=True)
+        return f"Done. I've set the screen brightness to {target}%."
+    except Exception as e:
+        return f"Failed to adjust screen brightness: {e}"
+
+
+def _kill_process_by_name(app_name: str) -> str:
+    """Closes processes matching the app_name."""
+    target = app_name.lower().strip()
+    
+    # Common app name overrides
+    name_map = {
+        "chrome": "chrome.exe",
+        "google chrome": "chrome.exe",
+        "firefox": "firefox.exe",
+        "edge": "msedge.exe",
+        "microsoft edge": "msedge.exe",
+        "vs code": "code.exe",
+        "vscode": "code.exe",
+        "visual studio code": "code.exe",
+        "cursor": "cursor.exe",
+        "spotify": "spotify.exe",
+        "discord": "discord.exe",
+        "telegram": "telegram.exe",
+        "whatsapp": "whatsapp.exe",
+        "vlc": "vlc.exe",
+        "notepad": "notepad.exe",
+        "calculator": "calc.exe",
+    }
+    
+    process_pattern = name_map.get(target, target)
+    if not process_pattern.endswith(".exe"):
+        process_pattern_exe = process_pattern + ".exe"
+    else:
+        process_pattern_exe = process_pattern
+
+    killed = False
+    count = 0
+    for proc in psutil.process_iter(['pid', 'name']):
+        try:
+            pname = proc.info['name'].lower()
+            if (process_pattern in pname) or (pname in process_pattern) or (process_pattern_exe in pname):
+                proc.terminate()
+                killed = True
+                count += 1
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            pass
+            
+    if killed:
+        return f"Done. I've closed {app_name}."
+    else:
+        return f"I couldn't find any running process named '{app_name}'."
+
+
+def get_system_diagnostics(metric: str = "all") -> str:
+    """Get system resource diagnostics: cpu, ram, disk, battery, or all."""
+    metric = metric.lower().strip()
+    
+    # 1. CPU Usage
+    cpu = psutil.cpu_percent(interval=0.1)
+    cpu_str = f"CPU Usage: {cpu}%"
+    
+    # 2. RAM Usage
+    vm = psutil.virtual_memory()
+    ram_used_gb = vm.used / (1024**3)
+    ram_total_gb = vm.total / (1024**3)
+    ram_str = f"RAM Usage: {vm.percent}% ({ram_used_gb:.1f} GB used / {ram_total_gb:.1f} GB total)"
+    
+    # 3. Disk Usage
+    try:
+        drive = Path.home().drive or "C:"
+        du = psutil.disk_usage(drive)
+        disk_free_gb = du.free / (1024**3)
+        disk_total_gb = du.total / (1024**3)
+        disk_str = f"Disk Space ({drive}): {du.percent}% full ({disk_free_gb:.1f} GB free of {disk_total_gb:.1f} GB total)"
+    except Exception:
+        disk_str = "Disk Space: Unavailable"
+        
+    # 4. Battery Status
+    battery = psutil.sensors_battery()
+    if battery:
+        plugged = "charging" if battery.power_plugged else "discharging"
+        bat_str = f"Battery: {battery.percent}% ({plugged})"
+    else:
+        bat_str = "Battery: Desktop (AC power)"
+
+    if metric == "cpu":
+        return f"Current CPU usage is {cpu}%."
+    elif metric in ("ram", "memory"):
+        return f"System memory usage is at {vm.percent}%. {ram_used_gb:.1f} GB is currently used out of {ram_total_gb:.1f} GB total."
+    elif metric in ("disk", "storage"):
+        return f"Disk space on drive {drive} is at {du.percent}% capacity, with {disk_free_gb:.1f} GB free out of {disk_total_gb:.1f} GB."
+    elif metric == "battery":
+        if battery:
+            plugged_text = "currently charging" if battery.power_plugged else "currently discharging"
+            return f"Your battery is at {battery.percent}% and is {plugged_text}."
+        else:
+            return "This PC is connected to desktop AC power. No battery detected."
+    else:
+        return f"System Status:\n– {cpu_str}\n– {ram_str}\n– {disk_str}\n– {bat_str}"
