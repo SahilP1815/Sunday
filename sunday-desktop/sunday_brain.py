@@ -103,7 +103,22 @@ def get_news(category: str = "general") -> str:
         category: The category of news to fetch (e.g., general, business, technology, sports, science, health, entertainment).
     """
     try:
-        response = requests.get("http://localhost:3001/api/news", params={"category": category}, timeout=8)
+        headers = {}
+        if _CONFIG_FILE.exists():
+            try:
+                config_data = json.loads(_CONFIG_FILE.read_text())
+                gnews_key = config_data.get("gnews_api_key", "").strip()
+                if gnews_key:
+                    headers["x-gnews-api-key"] = gnews_key
+            except Exception:
+                pass
+
+        response = requests.get(
+            "http://localhost:3001/api/news",
+            params={"category": category},
+            headers=headers,
+            timeout=8
+        )
         if response.status_code == 200:
             data = response.json()
             articles = data.get("articles", [])

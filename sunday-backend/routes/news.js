@@ -21,11 +21,11 @@ const VALID_CTRY  = new Set(['in','us','gb','au','ca','de','fr','jp','cn','br','
 //   max       — number of articles, 1–10 (default: 5)
 //   q         — optional search keyword filter
 router.get('/', async (req, res) => {
-  const apiKey = process.env.GNEWS_API_KEY;
+  const apiKey = req.headers['x-gnews-api-key'] || process.env.GNEWS_API_KEY;
 
   if (!apiKey) {
     return res.status(503).json({
-      error: 'GNEWS_API_KEY is not configured. Add it to your .env file.',
+      error: 'GNEWS_API_KEY is not configured. Add it to your settings or backend .env file.',
       hint:  'Free tier available at https://gnews.io',
     });
   }

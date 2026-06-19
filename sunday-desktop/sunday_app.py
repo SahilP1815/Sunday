@@ -645,6 +645,29 @@ class SundayApp:
         if self.config.get("sarvam_api_key"):
             sarvam_key_entry.insert(0, self.config["sarvam_api_key"])
 
+        # GNews API Key Section
+        gnews_frame = ctk.CTkFrame(win, fg_color="transparent")
+        gnews_frame.pack(fill="x", padx=24, pady=4)
+        
+        ctk.CTkLabel(
+            gnews_frame, text="GNews API Key (for news updates)",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=COLORS["text_primary"],
+        ).pack(anchor="w")
+
+        gnews_key_entry = ctk.CTkEntry(
+            gnews_frame, width=472, height=36,
+            fg_color=COLORS["input_bg"],
+            border_color=COLORS["panel_border"],
+            text_color=COLORS["text_primary"],
+            show="*",
+            font=ctk.CTkFont(size=11),
+        )
+        gnews_key_entry.pack(fill="x", pady=(4, 0))
+        if self.config.get("gnews_api_key"):
+            gnews_key_entry.insert(0, self.config["gnews_api_key"])
+
+
         # Mic Device Section
         mic_frame = ctk.CTkFrame(win, fg_color="transparent")
         mic_frame.pack(fill="x", padx=24, pady=8)
@@ -811,6 +834,11 @@ class SundayApp:
             # Save Sarvam API Key
             sarvam_key = sarvam_key_entry.get().strip()
             self._save_config({"sarvam_api_key": sarvam_key})
+
+            # Save GNews API Key
+            gnews_key = gnews_key_entry.get().strip()
+            self._save_config({"gnews_api_key": gnews_key})
+
 
             # Save Mic index
             sel_mic = mic_dropdown.get()
