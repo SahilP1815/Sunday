@@ -10,7 +10,22 @@ import glob
 import re
 import ctypes
 import psutil
+import json
 from pathlib import Path
+
+_CONFIG_FILE = Path(__file__).parent / "config.json"
+
+def _load_gemini_key() -> str:
+    if _CONFIG_FILE.exists():
+        try:
+            data = json.loads(_CONFIG_FILE.read_text())
+            key = data.get("gemini_api_key", "").strip()
+            if key:
+                return key
+        except Exception:
+            pass
+    return os.getenv("GEMINI_API_KEY", "").strip()
+
 
 
 # ── Known app direct paths (most reliable) ────────────────────────────────────
@@ -158,6 +173,24 @@ SEARCH_ROOTS = [
 
 def handle_command(text: str):
     lower = text.lower().strip()
+
+    # ── PowerPoint Generation ─────────────────────────────────────────
+    if any(keyword in lower for keyword in ["ppt", "presentation", "slides", "powerpoint"]):
+        from ppt_generator import PPTGeneratorSkill
+        gemini_key = _load_gemini_key()
+        generator = PPTGeneratorSkill(gemini_api_key=gemini_key)
+        parsed = generator.parse_command(text)
+        if parsed["intent"] == "create_ppt":
+            topic = parsed["topic"]
+            slide_count = parsed["slide_count"]
+            try:
+                slides_content = generator.generate_content(topic, slide_count)
+                file_path = generator.build_pptx_file(topic, slides_content)
+                generator.launch_powerpoint(file_path)
+                return f"Done. I've created a {slide_count}-slide presentation on {topic} and opened it for you."
+            except Exception as e:
+                return f"I encountered an error while creating the presentation: {str(e)}"
+
 
     # 1. Explicit URL ──────────────────────────────────────────────
     m = re.search(r"open\s+(https?://\S+)", lower)
