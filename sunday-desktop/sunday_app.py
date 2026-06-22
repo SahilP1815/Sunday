@@ -54,10 +54,20 @@ class SundayApp:
         self.brain = SundayBrain()
         self.config = self._load_config()
 
-        # Apply saved API key
+        # Apply saved Gemini key
         saved_key = self.config.get("gemini_api_key", "")
         if saved_key:
             self.brain.set_api_key(saved_key)
+
+        # Apply saved Sarvam key — makes it the primary brain immediately
+        saved_sarvam = self.config.get("sarvam_api_key", "")
+        if saved_sarvam:
+            self.brain.set_sarvam_key(saved_sarvam)
+
+        # Apply saved Tavily key
+        saved_tavily = self.config.get("tavily_api_key", "")
+        if saved_tavily:
+            self.brain.set_tavily_key(saved_tavily)
 
         self.voice = VoiceEngine(
             on_wake=self._on_wake,
@@ -300,8 +310,11 @@ class SundayApp:
         bar.pack(fill="x", side="bottom")
         bar.pack_propagate(False)
 
+        # Determine which engine is active
+        engine = "Sarvam AI" if self.brain._sarvam_key else "Gemini"
+
         self.status_bar_label = ctk.CTkLabel(
-            bar, text="Sunday v2.0 · Powered by Gemini",
+            bar, text=f"Sunday v2.0 · Powered by {engine}",
             font=ctk.CTkFont(family="Courier New", size=9),
             text_color=COLORS["text_dim"],
         )
@@ -427,6 +440,13 @@ class SundayApp:
 
     def _set_status(self, text: str):
         self.root.after(0, lambda: self.status_label.configure(text=text))
+
+    def _update_engine_label(self):
+        """Refresh the status bar to show which AI engine is currently active."""
+        engine = "Sarvam AI" if self.brain._sarvam_key else "Gemini"
+        self.root.after(0, lambda: self.status_bar_label.configure(
+            text=f"Sunday v2.0 · Powered by {engine}"
+        ))
 
     # ── Voice callbacks ──────────────────────────────────────────
 
@@ -590,7 +610,7 @@ class SundayApp:
     def _open_settings(self):
         win = ctk.CTkToplevel(self.root)
         win.title("Settings")
-        win.geometry("520x680")
+        win.geometry("520x720")
         win.configure(fg_color=COLORS["panel"])
         win.resizable(False, False)
         win.grab_set()
@@ -666,6 +686,28 @@ class SundayApp:
         gnews_key_entry.pack(fill="x", pady=(4, 0))
         if self.config.get("gnews_api_key"):
             gnews_key_entry.insert(0, self.config["gnews_api_key"])
+
+        # Tavily API Key Section
+        tavily_frame = ctk.CTkFrame(win, fg_color="transparent")
+        tavily_frame.pack(fill="x", padx=24, pady=4)
+        
+        ctk.CTkLabel(
+            tavily_frame, text="Tavily API Key (for web searching & news)",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=COLORS["text_primary"],
+        ).pack(anchor="w")
+
+        tavily_key_entry = ctk.CTkEntry(
+            tavily_frame, width=472, height=36,
+            fg_color=COLORS["input_bg"],
+            border_color=COLORS["panel_border"],
+            text_color=COLORS["text_primary"],
+            show="*",
+            font=ctk.CTkFont(size=11),
+        )
+        tavily_key_entry.pack(fill="x", pady=(4, 0))
+        if self.config.get("tavily_api_key"):
+            tavily_key_entry.insert(0, self.config["tavily_api_key"])
 
 
         # Mic Device Section
@@ -831,13 +873,20 @@ class SundayApp:
                 self._save_config({"gemini_api_key": key})
                 self.brain.set_api_key(key)
 
-            # Save Sarvam API Key
+            # Save Sarvam API Key — also hot-reload into brain as primary engine
             sarvam_key = sarvam_key_entry.get().strip()
             self._save_config({"sarvam_api_key": sarvam_key})
+            self.brain.set_sarvam_key(sarvam_key)
+            self._update_engine_label()
 
             # Save GNews API Key
             gnews_key = gnews_key_entry.get().strip()
             self._save_config({"gnews_api_key": gnews_key})
+
+            # Save Tavily API Key
+            tavily_key = tavily_key_entry.get().strip()
+            self._save_config({"tavily_api_key": tavily_key})
+            self.brain.set_tavily_key(tavily_key)
 
 
             # Save Mic index

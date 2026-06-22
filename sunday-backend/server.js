@@ -94,6 +94,7 @@ app.listen(PORT, () => {
   console.log(`  \x1b[33m●\x1b[0m  CORS       → ${allowedOrigin}`);
   console.log(`  \x1b[33m●\x1b[0m  GNews      → ${process.env.GNEWS_API_KEY  ? '\x1b[32mconfigured\x1b[0m' : '\x1b[90mnot set\x1b[0m'}`);
   console.log(`  \x1b[33m●\x1b[0m  SerpAPI    → ${process.env.SERPAPI_KEY    ? '\x1b[32mconfigured\x1b[0m' : '\x1b[90musing DDG fallback\x1b[0m'}`);
+  console.log(`  \x1b[33m●\x1b[0m  Tavily     → ${process.env.TAVILY_API_KEY  ? '\x1b[32mconfigured\x1b[0m' : '\x1b[90mnot set\x1b[0m'}`);
   console.log(`\x1b[36m${line}\x1b[0m\n`);
 });
 

@@ -20,13 +20,39 @@ const VALID_CTRY  = new Set(['in','us','gb','au','ca','de','fr','jp','cn','br','
 //   lang      — ISO-639 language code (default: en)
 //   max       — number of articles, 1–10 (default: 5)
 //   q         — optional search keyword filter
-router.get('/', async (req, res) => {
-  const apiKey = req.headers['x-gnews-api-key'] || process.env.GNEWS_API_KEY;
+// ─── Tavily News Search ────────────────────────────────────────
+async function tavilyNewsSearch(category, q, apiKey) {
+  const query = q ? q : `latest news about ${category}`;
+  const { data } = await axios.post('https://api.tavily.com/search', {
+    api_key: apiKey,
+    query: query,
+    topic: 'news',
+    max_results: 5,
+  }, {
+    headers: { 'Content-Type': 'application/json' },
+    timeout: 10000,
+  });
 
-  if (!apiKey) {
+  return (data.results || []).map(r => ({
+    title:       r.title || '',
+    description: r.content || '',
+    content:     r.content || null,
+    url:         r.url || null,
+    image:       null,
+    source:      'Tavily News',
+    publishedAt: new Date().toISOString(),
+  }));
+}
+
+// ─── GET /api/news ────────────────────────────────────────────
+router.get('/', async (req, res) => {
+  const gnewsKey = req.headers['x-gnews-api-key'] || process.env.GNEWS_API_KEY;
+  const tavilyKey = req.headers['x-tavily-api-key'] || process.env.TAVILY_API_KEY;
+
+  if (!gnewsKey && !tavilyKey) {
     return res.status(503).json({
-      error: 'GNEWS_API_KEY is not configured. Add it to your settings or backend .env file.',
-      hint:  'Free tier available at https://gnews.io',
+      error: 'Neither GNEWS_API_KEY nor TAVILY_API_KEY is configured. Add one of them to your settings or backend .env file.',
+      hint:  'GNews offers a free tier at https://gnews.io, and Tavily is available at https://tavily.com',
     });
   }
 
@@ -37,32 +63,42 @@ router.get('/', async (req, res) => {
   const q        = req.query.q ? req.query.q.slice(0, 100) : undefined;
 
   try {
-    const params = { token: apiKey, category, country, lang, max };
-    if (q) params.q = q;
+    if (gnewsKey) {
+      const params = { token: gnewsKey, category, country, lang, max };
+      if (q) params.q = q;
 
-    const { data } = await axios.get(GNEWS_BASE, { params, timeout: 8000 });
+      const { data } = await axios.get(GNEWS_BASE, { params, timeout: 8000 });
 
-    const articles = (data.articles || []).map(a => ({
-      title:       a.title,
-      description: a.description,
-      content:     a.content?.slice(0, 500) || null,
-      url:         a.url,
-      image:       a.image || null,
-      source:      a.source?.name || null,
-      publishedAt: a.publishedAt,
-    }));
+      const articles = (data.articles || []).map(a => ({
+        title:       a.title,
+        description: a.description,
+        content:     a.content?.slice(0, 500) || null,
+        url:         a.url,
+        image:       a.image || null,
+        source:      a.source?.name || null,
+        publishedAt: a.publishedAt,
+      }));
 
-    return res.json({
-      category,
-      country,
-      total:    data.totalArticles ?? articles.length,
-      articles,
-    });
+      return res.json({
+        category,
+        country,
+        total:    data.totalArticles ?? articles.length,
+        articles,
+      });
+    } else {
+      const articles = await tavilyNewsSearch(category, q, tavilyKey);
+      return res.json({
+        category,
+        country,
+        total:    articles.length,
+        articles,
+      });
+    }
 
   } catch (err) {
     const status  = err.response?.status  || 502;
     const message = err.response?.data?.errors?.[0] || err.message;
-    console.error('[news] GNews error:', message);
+    console.error('[news] Error fetching news:', message);
     return res.status(status).json({ error: 'Failed to fetch news.', detail: message });
   }
 });

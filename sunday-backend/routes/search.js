@@ -106,6 +106,46 @@ async function ddgSearch(query) {
   return results;
 }
 
+// ─── Tavily Search ─────────────────────────────────────────────
+async function tavilySearch(query, apiKey) {
+  const { data } = await axios.post('https://api.tavily.com/search', {
+    api_key: apiKey,
+    query: query,
+    search_depth: 'basic',
+    include_answer: true,
+    max_results: 5,
+  }, {
+    headers: { 'Content-Type': 'application/json' },
+    timeout: 10000,
+  });
+
+  const results = [];
+
+  // If Tavily returned a direct answer, include it as an answer box
+  if (data.answer) {
+    results.push({
+      type: 'answer_box',
+      title: 'Tavily Answer',
+      snippet: data.answer,
+      url: null,
+      source: 'Tavily AI Answer',
+    });
+  }
+
+  // Organic results
+  (data.results || []).slice(0, 5).forEach(r => {
+    results.push({
+      type: 'organic',
+      title: r.title || '',
+      snippet: r.content || '',
+      url: r.url || null,
+      source: 'Tavily Search',
+    });
+  });
+
+  return results;
+}
+
 // ─── GET /api/search?q=... ────────────────────────────────────
 router.get('/', async (req, res) => {
   const q = (req.query.q || '').trim();
@@ -117,13 +157,25 @@ router.get('/', async (req, res) => {
     return res.status(400).json({ error: 'Query too long (max 300 characters).' });
   }
 
-  const hasSerpKey = Boolean(process.env.SERPAPI_KEY);
-  const engine     = hasSerpKey ? 'serpapi' : 'duckduckgo';
+  const tavilyKey = req.headers['x-tavily-api-key'] || process.env.TAVILY_API_KEY;
+  const serpKey   = process.env.SERPAPI_KEY;
+
+  let engine = 'duckduckgo';
+  if (tavilyKey) {
+    engine = 'tavily';
+  } else if (serpKey) {
+    engine = 'serpapi';
+  }
 
   try {
-    const results = hasSerpKey
-      ? await serpSearch(q)
-      : await ddgSearch(q);
+    let results;
+    if (tavilyKey) {
+      results = await tavilySearch(q, tavilyKey);
+    } else if (serpKey) {
+      results = await serpSearch(q);
+    } else {
+      results = await ddgSearch(q);
+    }
 
     return res.json({
       query:   q,
@@ -135,20 +187,30 @@ router.get('/', async (req, res) => {
   } catch (err) {
     console.error(`[search] ${engine} error:`, err.message);
 
-    // If SerpAPI failed, try DuckDuckGo as last resort
-    if (hasSerpKey) {
-      try {
-        const fallback = await ddgSearch(q);
+    // Try fallbacks
+    try {
+      let fallbackResults;
+      let fallbackEngine;
+
+      if (engine === 'tavily' && serpKey) {
+        fallbackEngine = 'serpapi';
+        fallbackResults = await serpSearch(q);
+      } else if (engine !== 'duckduckgo') {
+        fallbackEngine = 'duckduckgo';
+        fallbackResults = await ddgSearch(q);
+      }
+
+      if (fallbackResults) {
         return res.json({
           query:   q,
-          engine:  'duckduckgo_fallback',
-          count:   fallback.length,
-          results: fallback,
-          warning: 'SerpAPI failed; used DuckDuckGo as fallback.',
+          engine:  `${engine}_fallback_to_${fallbackEngine}`,
+          count:   fallbackResults.length,
+          results: fallbackResults,
+          warning: `${engine} failed; used ${fallbackEngine} as fallback.`,
         });
-      } catch (fbErr) {
-        console.error('[search] DDG fallback also failed:', fbErr.message);
       }
+    } catch (fbErr) {
+      console.error('[search] Fallback also failed:', fbErr.message);
     }
 
     return res.status(502).json({

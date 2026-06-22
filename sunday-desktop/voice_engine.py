@@ -153,6 +153,9 @@ class VoiceEngine:
             response = requests.post(url, json=payload, headers=headers, timeout=10)
             if response.status_code != 200:
                 print(f"[Sarvam TTS] API returned status {response.status_code}: {response.text}")
+                if response.status_code in (401, 403):
+                    self.sarvam_api_key = ""
+                    print("[Sarvam TTS] Sarvam key is invalid/expired. Disabling Sarvam TTS.")
                 return False
                 
             data = response.json()
@@ -276,6 +279,7 @@ class VoiceEngine:
 
             # Recognise — show interim text while processing
             self.on_interim("recognising...")
+            audio = self._preprocess_audio(audio)
             try:
                 if self.sarvam_api_key:
                     try:
@@ -283,6 +287,9 @@ class VoiceEngine:
                         print(f"[Active] Heard (Sarvam): '{text}'")
                     except Exception as ex:
                         print(f"[Active] Sarvam STT failed: {ex}. Falling back to Google.")
+                        if "403" in str(ex) or "401" in str(ex) or "credentials" in str(ex).lower():
+                            self.sarvam_api_key = ""
+                            print("[Active] Sarvam key is invalid/expired. Disabling Sarvam STT.")
                         text = self.recognizer.recognize_google(audio, language=self.language)
                 else:
                     text = self.recognizer.recognize_google(audio, language=self.language)
@@ -335,6 +342,119 @@ class VoiceEngine:
             
         res_data = response.json()
         return res_data.get("transcript", "").strip()
+
+    def _preprocess_audio(self, audio: sr.AudioData) -> sr.AudioData:
+        """Preprocess audio to remove background noise and silent parts using VAD."""
+        try:
+            import numpy as np
+            from scipy.signal import stft, istft
+            
+            sample_rate = audio.sample_rate
+            sample_width = audio.sample_width
+            raw_bytes = audio.get_raw_data()
+            
+            if sample_width == 2:
+                dtype = np.int16
+            elif sample_width == 4:
+                dtype = np.int32
+            elif sample_width == 1:
+                dtype = np.uint8
+            else:
+                dtype = np.int16
+                
+            samples = np.frombuffer(raw_bytes, dtype=dtype).astype(np.float32)
+            if len(samples) == 0:
+                return audio
+
+            # ─── 1. Spectral Subtraction Noise Reduction ───
+            noise_duration = 0.4  # seconds
+            noise_len = int(sample_rate * noise_duration)
+            
+            if len(samples) > noise_len:
+                nperseg = int(sample_rate * 0.025)  # 25ms frame
+                noverlap = nperseg // 2
+                
+                f, t, Zxx = stft(samples, fs=sample_rate, nperseg=nperseg, noverlap=noverlap)
+                
+                # Estimate noise profile from initial segment
+                noise_frames = int(noise_duration / (t[1] - t[0]))
+                noise_frames = max(1, min(noise_frames, Zxx.shape[1] // 2))
+                noise_profile = np.mean(np.abs(Zxx[:, :noise_frames]), axis=1, keepdims=True)
+                
+                oversub_factor = 2.0
+                spectral_floor = 0.05
+                
+                magnitude = np.abs(Zxx)
+                phase = np.angle(Zxx)
+                
+                cleaned_magnitude = magnitude - oversub_factor * noise_profile
+                cleaned_magnitude = np.maximum(cleaned_magnitude, spectral_floor * magnitude)
+                
+                Zxx_cleaned = cleaned_magnitude * np.exp(1j * phase)
+                _, samples = istft(Zxx_cleaned, fs=sample_rate, nperseg=nperseg, noverlap=noverlap)
+
+            # ─── 2. Voice Activity Detection (VAD) & Silence Removal ───
+            frame_ms = 30
+            hangover_ms = 400
+            noise_rms_multiplier = 2.5
+            
+            frame_size = int(sample_rate * (frame_ms / 1000.0))
+            if frame_size > 0 and len(samples) >= frame_size:
+                num_frames = len(samples) // frame_size
+                frames = np.array_split(samples[:num_frames * frame_size], num_frames)
+                
+                rms_energy = np.array([np.sqrt(np.mean(frame**2) + 1e-10) for frame in frames])
+                
+                # Estimate noise floor from the quietest 15% of frames
+                sorted_rms = np.sort(rms_energy)
+                est_noise_rms = np.mean(sorted_rms[:max(1, int(len(sorted_rms) * 0.15))])
+                
+                threshold = max(est_noise_rms * noise_rms_multiplier, 250.0)
+                hangover_frames = int(hangover_ms / frame_ms)
+                voiced_flags = rms_energy > threshold
+                
+                print(f"[VAD] Noise RMS: {est_noise_rms:.2f}, Threshold: {threshold:.2f}, Voiced frames: {np.sum(voiced_flags)}/{num_frames}")
+                
+                active_frames = np.zeros_like(voiced_flags, dtype=bool)
+                active_counter = 0
+                
+                for i, is_voiced in enumerate(voiced_flags):
+                    if is_voiced:
+                        active_frames[i] = True
+                        active_counter = hangover_frames
+                    else:
+                        if active_counter > 0:
+                            active_frames[i] = True
+                            active_counter -= 1
+                
+                # Apply look-back padding (120ms) to preserve onset consonants
+                lookback_frames = int(120 / frame_ms)
+                for i in range(len(active_frames)):
+                    if active_frames[i]:
+                        start_pad = max(0, i - lookback_frames)
+                        active_frames[start_pad:i] = True
+                
+                cleaned_frames = [frames[i] for i in range(num_frames) if active_frames[i]]
+                if cleaned_frames:
+                    samples = np.concatenate(cleaned_frames)
+
+            # Convert back to original dtype
+            if dtype == np.int16:
+                samples = np.clip(samples, -32768.0, 32767.0)
+            elif dtype == np.int32:
+                samples = np.clip(samples, -2147483648.0, 2147483647.0)
+            elif dtype == np.uint8:
+                samples = np.clip(samples, 0.0, 255.0)
+                
+            samples = samples.astype(dtype)
+            cleaned_bytes = samples.tobytes()
+            
+            print(f"[Voice Preprocess] Original size: {len(raw_bytes)} bytes, cleaned size: {len(cleaned_bytes)} bytes")
+            return sr.AudioData(cleaned_bytes, sample_rate, sample_width)
+            
+        except Exception as e:
+            print(f"[Voice Preprocess] Error during preprocessing: {e}. Using original audio.")
+            return audio
 
     def stop(self):
         """Stop all voice activity."""
